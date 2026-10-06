@@ -75,17 +75,24 @@ export class InMemoryKVStore implements KVStore {
 // Global instance for in-memory store
 const globalStore = new InMemoryKVStore();
 
-let cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+// Use a global Symbol-keyed reference so the setInterval survives Next.js HMR.
+// Without this, every hot-reload cycle would register a new interval because
+// the module-level 'let' binding resets to null — causing unbounded leakage.
+const CLEANUP_INTERVAL_KEY = Symbol.for('commitlabs.idempotency.cleanupInterval');
 
-// Periodically clean up
-if (typeof setInterval !== 'undefined' && cleanupIntervalId === null) {
-  cleanupIntervalId = setInterval(() => globalStore.cleanup(), 60 * 1000); // every minute
+declare global {
+  // eslint-disable-next-line no-var
+  var [CLEANUP_INTERVAL_KEY]?: ReturnType<typeof setInterval>;
+}
+
+if (typeof setInterval !== 'undefined' && typeof globalThis[CLEANUP_INTERVAL_KEY] === 'undefined') {
+  globalThis[CLEANUP_INTERVAL_KEY] = setInterval(() => globalStore.cleanup(), 60 * 1000);
 }
 
 export function clearCleanupInterval(): void {
-  if (cleanupIntervalId !== null) {
-    clearInterval(cleanupIntervalId);
-    cleanupIntervalId = null;
+  if (globalThis[CLEANUP_INTERVAL_KEY] !== undefined) {
+    clearInterval(globalThis[CLEANUP_INTERVAL_KEY]!);
+    globalThis[CLEANUP_INTERVAL_KEY] = undefined;
   }
 }
 
@@ -100,7 +107,7 @@ export class IdempotencyService {
   }
 
   async getRecord<T>(key: string): Promise<IdempotencyRecord<T> | null> {
-    return this.store.get<IdempotencyRecord<T>>(`idempotency:${key}`);
+    return this.store.get<IdempotencyRecord<T>>(idempotency:);
   }
 
   async start(key: string): Promise<boolean> {
@@ -116,7 +123,7 @@ export class IdempotencyService {
       expiresAt: Date.now() + this.ttlSeconds * 1000,
     };
 
-    await this.store.set(`idempotency:${key}`, record, this.ttlSeconds);
+    await this.store.set(idempotency:, record, this.ttlSeconds);
     return true;
   }
 
@@ -130,13 +137,13 @@ export class IdempotencyService {
       expiresAt: Date.now() + this.ttlSeconds * 1000,
     };
 
-    await this.store.set(`idempotency:${key}`, record, this.ttlSeconds);
+    await this.store.set(idempotency:, record, this.ttlSeconds);
   }
 
   async fail(key: string): Promise<void> {
     // On failure, we might want to delete the key so it can be retried,
     // or mark it as FAILED. Here we delete it to allow retries.
-    await this.store.delete(`idempotency:${key}`);
+    await this.store.delete(idempotency:);
   }
 }
 
