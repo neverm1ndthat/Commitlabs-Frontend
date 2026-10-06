@@ -1,8 +1,7 @@
-
 /**
  * Seed module for mock database.
  *
- * Exports a callable `seedMockData` function so the seed route and CLI script
+ * Exports a callable seedMockData function so the seed route and CLI script
  * can share the same logic without spawning a child process.
  *
  * Guard rules (enforced at call-time):
@@ -10,9 +9,10 @@
  *  2. SEED_ROUTE_ENABLED must be "true".
  *
  * An optional SEED_SECRET env var can be set; when present, callers must
- * supply the matching value via the `x-seed-secret` request header.
+ * supply the matching value via the x-seed-secret request header.
  */
 
+import { timingSafeEqual } from 'crypto';
 import { setMockData } from './mockDb';
 import type { MockData } from './mockDb';
 
@@ -60,19 +60,17 @@ const SAMPLE_DATA: MockData = {
       id: 'ATTR-001',
       commitmentId: 'CMT-ABC123',
       kind: 'health_check',
-      status: 'Valid',
       verdict: 'pass',
       observedAt: '2026-01-11T12:00:00Z',
       timestamp: '2026-01-11T12:00:00Z',
       severity: 'ok',
-      address: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1',
     },
   ],
   listings: [
     {
       id: '001',
       commitmentId: 'CMT-ABC123',
-      price: '$52,000',
+      price: ',000',
       currencyAsset: 'USDC',
       sellerAddress: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1',
       status: 'Active',
@@ -82,7 +80,7 @@ const SAMPLE_DATA: MockData = {
     {
       id: '002',
       commitmentId: 'CMT-XYZ789',
-      price: '$105,000',
+      price: ',000',
       currencyAsset: 'USDC',
       sellerAddress: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX2',
       status: 'Active',
@@ -90,7 +88,7 @@ const SAMPLE_DATA: MockData = {
       updatedAt: '2025-12-15T00:00:00Z',
     },
   ],
-};
+} satisfies MockData;
 
 // ---------------------------------------------------------------------------
 // Guard helpers (exported for testing)
@@ -104,14 +102,20 @@ export function isSeedAllowed(): boolean {
 }
 
 /**
- * Validates an optional shared secret.
+ * Validates an optional shared secret using timing-safe comparison.
  * Returns true when no secret is configured (open) or when the supplied
- * value matches SEED_SECRET exactly.
+ * value matches SEED_SECRET using Node's timingSafeEqual to prevent
+ * timing side-channel attacks.
  */
 export function isSeedSecretValid(suppliedSecret: string | null): boolean {
   const expected = process.env.SEED_SECRET;
-  if (!expected) return true; // no secret configured → always valid
-  return suppliedSecret === expected;
+  if (!expected) return true;
+  if (!suppliedSecret) return false;
+
+  const ab = Buffer.from(suppliedSecret, 'utf8');
+  const bb = Buffer.from(expected, 'utf8');
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +130,9 @@ export interface SeedResult {
 /**
  * Seeds the mock database with sample data.
  *
- * @param suppliedSecret - Value from the `x-seed-secret` header (or null).
+ * @param suppliedSecret - Value from the x-seed-secret header (or null).
  * @returns SeedResult describing the outcome.
- * @throws Never – errors are captured and returned as a failed SeedResult.
+ * @throws Never - errors are captured and returned as a failed SeedResult.
  */
 export async function seedMockData(suppliedSecret: string | null = null): Promise<SeedResult> {
   if (!isSeedAllowed()) {
@@ -147,6 +151,6 @@ export async function seedMockData(suppliedSecret: string | null = null): Promis
     return { seeded: true, message: 'Mock data seeded successfully.' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return { seeded: false, message: `Failed to seed mock data: ${msg}` };
+    return { seeded: false, message: Failed to seed mock data:  };
   }
 }
